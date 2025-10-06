@@ -95,19 +95,37 @@ app.post("/send", async (req, res) => {
 
 
 app.post("/webhook", (req, res) => {
-
+  // Normalize incoming payload for different UltraMSG formats
   const payload = req.body || {};
+  const nested = payload.data || payload.message || payload.payload || {};
+  const arrMsg = Array.isArray(payload.messages) && payload.messages.length ? payload.messages[0] : null;
+
+  const from =
+    payload.from ||
+    payload.sender ||
+    payload.phone ||
+    nested.from ||
+    (arrMsg && (arrMsg.from || arrMsg.sender)) ||
+    null;
+  const to = payload.to || payload.receiver || nested.to || (arrMsg && (arrMsg.to || arrMsg.receiver)) || null;
+  const body =
+    payload.body ||
+    payload.message ||
+    payload.text ||
+    payload.caption ||
+    nested.body ||
+    nested.message ||
+    nested.text ||
+    (arrMsg && (arrMsg.body || arrMsg.text || arrMsg.message)) ||
+    null;
+  const type = payload.type || payload.event || nested.type || (arrMsg && arrMsg.type) || null;
+
   const event = {
     direction: "incoming",
-    from: payload.from || payload.sender || payload.phone || null,
-    to: payload.to || payload.receiver || null,
-    body:
-      payload.body ||
-      payload.message ||
-      payload.text ||
-      payload.caption ||
-      null,
-    type: payload.type || payload.event || null,
+    from: from || "Unknown",
+    to,
+    body: body || "[No text]",
+    type,
     raw: payload,
     at: new Date().toISOString(),
   };
