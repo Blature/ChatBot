@@ -1,0 +1,103 @@
+<!doctype html>
+<html lang="fa" dir="rtl">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>WhatsApp Chatbot - UltraMSG</title>
+    <style>
+      body { font-family: sans-serif; background: #0f172a; color: #e2e8f0; margin: 0; }
+      header { padding: 16px 24px; background: #111827; border-bottom: 1px solid #1f2937; }
+      main { padding: 24px; display: grid; grid-template-columns: 1fr 1fr; gap: 24px; }
+      h1 { font-size: 18px; margin: 0; }
+      .card { background: #111827; border: 1px solid #1f2937; border-radius: 12px; padding: 16px; }
+      label { display:block; margin: 12px 0 6px; color: #93c5fd; }
+      input, textarea { width: 100%; padding: 10px; border-radius: 8px; border: 1px solid #334155; background: #0b1220; color: #e2e8f0; }
+      button { margin-top: 12px; background: #2563eb; color: white; border: none; padding: 10px 14px; border-radius: 8px; cursor: pointer; }
+      button:disabled { background: #334155; cursor: not-allowed; }
+      .logs { max-height: 60vh; overflow: auto; }
+      .log-item { padding: 10px; border-bottom: 1px dashed #1f2937; }
+      .outgoing { color: #a7f3d0; }
+      .incoming { color: #fca5a5; }
+      .muted { color: #94a3b8; font-size: 12px; }
+    </style>
+  </head>
+  <body>
+    <header>
+      <h1>چت‌بات واتس‌اپ (UltraMSG + Express)</h1>
+    </header>
+    <main>
+      <section class="card">
+        <h2>ارسال پیام به شماره</h2>
+        <p class="muted">شماره را با کد کشور وارد کنید. نمونه: 98912XXXXXXX یا +98912XXXXXXX</p>
+        <label for="to">شماره مقصد</label>
+        <input id="to" placeholder="مثال: 98912XXXXXXX" />
+        <label for="body">متن پیام</label>
+        <textarea id="body" rows="4" placeholder="سلام! این یک پیام تستی است."></textarea>
+        <button id="sendBtn">ارسال پیام</button>
+        <p id="sendStatus" class="muted"></p>
+      </section>
+
+      <section class="card">
+        <h2>لاگ زنده پیام‌های دریافتی</h2>
+        <div class="logs" id="logs"></div>
+      </section>
+    </main>
+
+    <script>
+      const toInput = document.getElementById('to');
+      const bodyInput = document.getElementById('body');
+      const sendBtn = document.getElementById('sendBtn');
+      const sendStatus = document.getElementById('sendStatus');
+      const logs = document.getElementById('logs');
+
+      function addLog(event) {
+        const el = document.createElement('div');
+        el.className = 'log-item ' + (event.direction || 'incoming');
+        const who = event.direction === 'outgoing' ? `به ${event.to}` : `از ${event.from}`;
+        const time = new Date(event.at).toLocaleString('fa-IR');
+        el.innerHTML = `<strong>${event.direction === 'outgoing' ? 'ارسال' : 'دریافتی'}</strong> (${who})<br/>` +
+                       `${event.body ? event.body : '[بدون متن]'}<br/>` +
+                       `<span class="muted">${time}</span>`;
+        logs.prepend(el);
+      }
+
+      // Subscribe to server-sent events
+      const es = new EventSource('/events');
+      es.onmessage = (e) => {
+        try {
+          const data = JSON.parse(e.data);
+          addLog(data);
+        } catch (_) {}
+      };
+
+      sendBtn.onclick = async () => {
+        const to = toInput.value.trim();
+        const body = bodyInput.value.trim();
+        if (!to || !body) {
+          sendStatus.textContent = 'شماره و متن پیام را وارد کنید.';
+          return;
+        }
+        sendBtn.disabled = true;
+        sendStatus.textContent = 'در حال ارسال...';
+        try {
+          const res = await fetch('/send', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ to, body })
+          });
+          const json = await res.json();
+          if (json.ok) {
+            sendStatus.textContent = 'ارسال شد.';
+            bodyInput.value = '';
+          } else {
+            sendStatus.textContent = 'خطا در ارسال: ' + (json.error?.error || json.error || 'نامشخص');
+          }
+        } catch (err) {
+          sendStatus.textContent = 'خطای شبکه: ' + err.message;
+        } finally {
+          sendBtn.disabled = false;
+        }
+      };
+    </script>
+  </body>
+  </html>
