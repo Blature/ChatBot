@@ -65,11 +65,22 @@
       const sendBtn = document.getElementById('sendBtn');
       const sendStatus = document.getElementById('sendStatus');
       const logs = document.getElementById('logs');
+      // Deduplication for rapid duplicate events (optimistic + SSE)
+      const recentLogKeys = new Map();
+      const DEDUP_WINDOW_MS = 3000;
 
       function addLog(event) {
+        const dirNorm = event.direction === 'outgoing' ? 'outgoing' : 'incoming';
+        const key = `${dirNorm}|${event.to || ''}|${event.from || ''}|${(event.body || '').trim()}`;
+        const now = Date.now();
+        const last = recentLogKeys.get(key) || 0;
+        if (now - last < DEDUP_WINDOW_MS) {
+          return; // skip duplicates arriving within short window
+        }
+        recentLogKeys.set(key, now);
         const el = document.createElement('div');
-        el.className = 'log-item ' + (event.direction || 'incoming');
-        const dir = event.direction === 'outgoing' ? 'Outgoing' : 'Incoming';
+        el.className = 'log-item ' + dirNorm;
+        const dir = dirNorm === 'outgoing' ? 'Outgoing' : 'Incoming';
         const who = event.direction === 'outgoing'
           ? (event.to ? `to ${event.to}` : '')
           : (event.from ? `from ${event.from}` : 'from Unknown');
