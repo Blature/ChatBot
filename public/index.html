@@ -1,47 +1,63 @@
 <!doctype html>
-<html lang="fa" dir="rtl">
+<html lang="en" dir="ltr">
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>WhatsApp Chatbot - UltraMSG</title>
     <style>
-      body { font-family: sans-serif; background: #0f172a; color: #e2e8f0; margin: 0; }
-      header { padding: 16px 24px; background: #111827; border-bottom: 1px solid #1f2937; }
-      main { padding: 24px; display: grid; grid-template-columns: 1fr 1fr; gap: 24px; }
-      h1 { font-size: 18px; margin: 0; }
-      .card { background: #111827; border: 1px solid #1f2937; border-radius: 12px; padding: 16px; }
-      label { display:block; margin: 12px 0 6px; color: #93c5fd; }
-      input, textarea { width: 100%; padding: 10px; border-radius: 8px; border: 1px solid #334155; background: #0b1220; color: #e2e8f0; }
-      button { margin-top: 12px; background: #2563eb; color: white; border: none; padding: 10px 14px; border-radius: 8px; cursor: pointer; }
+      :root {
+        --bg: #0b1220;
+        --panel: #101826;
+        --border: #1f2a3a;
+        --text: #e5edf5;
+        --muted: #97a6b9;
+        --primary: #4c7ef3;
+        --primary-700: #375fd6;
+        --incoming: #f59e9e;
+        --outgoing: #97e6c9;
+      }
+      * { box-sizing: border-box; }
+      body { font-family: ui-sans-serif, system-ui, Segoe UI, Roboto, Arial, sans-serif; background: var(--bg); color: var(--text); margin: 0; min-height: 100vh; display: grid; place-items: center; }
+      .container { width: 100%; max-width: 720px; padding: 24px; }
+      .card { background: var(--panel); border: 1px solid var(--border); border-radius: 16px; padding: 20px; box-shadow: 0 12px 24px rgba(0,0,0,0.35); }
+      .title { margin: 0 0 8px; font-size: 22px; font-weight: 700; letter-spacing: 0.3px; }
+      .subtitle { margin: 0 0 16px; color: var(--muted); font-size: 13px; }
+      label { display:block; margin: 12px 0 6px; color: #b7cffc; font-size: 13px; }
+      input, textarea { width: 100%; padding: 12px; border-radius: 10px; border: 1px solid var(--border); background: #0c1422; color: var(--text); outline: none; }
+      input:focus, textarea:focus { border-color: var(--primary); box-shadow: 0 0 0 2px rgba(76,126,243,0.2); }
+      button { margin-top: 12px; background: var(--primary); color: white; border: none; padding: 12px 16px; border-radius: 10px; cursor: pointer; font-weight: 600; }
+      button:hover { background: var(--primary-700); }
       button:disabled { background: #334155; cursor: not-allowed; }
-      .logs { max-height: 60vh; overflow: auto; }
-      .log-item { padding: 10px; border-bottom: 1px dashed #1f2937; }
-      .outgoing { color: #a7f3d0; }
-      .incoming { color: #fca5a5; }
-      .muted { color: #94a3b8; font-size: 12px; }
+      .section { margin-top: 18px; }
+      .logs { max-height: 340px; overflow: auto; background: #0c1422; border: 1px solid var(--border); border-radius: 12px; padding: 10px; }
+      .log-item { padding: 10px; border-bottom: 1px dashed var(--border); }
+      .log-item:last-child { border-bottom: none; }
+      .outgoing { color: var(--outgoing); }
+      .incoming { color: var(--incoming); }
+      .muted { color: var(--muted); font-size: 12px; }
+      .row { display: flex; gap: 12px; align-items: center; }
     </style>
   </head>
   <body>
-    <header>
-      <h1>چت‌بات واتس‌اپ (UltraMSG + Express)</h1>
-    </header>
-    <main>
+    <div class="container">
       <section class="card">
-        <h2>ارسال پیام به شماره</h2>
-        <p class="muted">شماره را با کد کشور وارد کنید. نمونه: 98912XXXXXXX یا +98912XXXXXXX</p>
-        <label for="to">شماره مقصد</label>
-        <input id="to" placeholder="مثال: 98912XXXXXXX" />
-        <label for="body">متن پیام</label>
-        <textarea id="body" rows="4" placeholder="سلام! این یک پیام تستی است."></textarea>
-        <button id="sendBtn">ارسال پیام</button>
-        <p id="sendStatus" class="muted"></p>
-      </section>
+        <h1 class="title">WhatsApp Chatbot</h1>
+        <p class="subtitle">UltraMSG + Express · Dark modern UI</p>
+        <label for="to">Recipient phone (with country code)</label>
+        <input id="to" placeholder="e.g. 98912XXXXXXX or +98912XXXXXXX" />
+        <label for="body">Message text</label>
+        <textarea id="body" rows="4" placeholder="Hello! This is a test message."></textarea>
+        <div class="row">
+          <button id="sendBtn">Send Message</button>
+          <p id="sendStatus" class="muted"></p>
+        </div>
 
-      <section class="card">
-        <h2>لاگ زنده پیام‌های دریافتی</h2>
-        <div class="logs" id="logs"></div>
+        <div class="section">
+          <h2 class="title" style="font-size:18px;">Live incoming/outgoing logs</h2>
+          <div class="logs" id="logs"></div>
+        </div>
       </section>
-    </main>
+    </div>
 
     <script>
       const toInput = document.getElementById('to');
@@ -53,10 +69,13 @@
       function addLog(event) {
         const el = document.createElement('div');
         el.className = 'log-item ' + (event.direction || 'incoming');
-        const who = event.direction === 'outgoing' ? `به ${event.to}` : `از ${event.from}`;
+        const dir = event.direction === 'outgoing' ? 'Outgoing' : 'Incoming';
+        const who = event.direction === 'outgoing'
+          ? (event.to ? `to ${event.to}` : '')
+          : (event.from ? `from ${event.from}` : 'from Unknown');
         const time = new Date(event.at).toLocaleString('fa-IR');
-        el.innerHTML = `<strong>${event.direction === 'outgoing' ? 'ارسال' : 'دریافتی'}</strong> (${who})<br/>` +
-                       `${event.body ? event.body : '[بدون متن]'}<br/>` +
+        el.innerHTML = `<strong>${dir}</strong> ${who ? '('+who+')' : ''}<br/>` +
+                       `${event.body ? event.body : '[No text]'}<br/>` +
                        `<span class="muted">${time}</span>`;
         logs.prepend(el);
       }
@@ -74,11 +93,11 @@
         const to = toInput.value.trim();
         const body = bodyInput.value.trim();
         if (!to || !body) {
-          sendStatus.textContent = 'شماره و متن پیام را وارد کنید.';
+          sendStatus.textContent = 'Enter phone and message.';
           return;
         }
         sendBtn.disabled = true;
-        sendStatus.textContent = 'در حال ارسال...';
+        sendStatus.textContent = 'Sending...';
         try {
           const res = await fetch('/send', {
             method: 'POST',
@@ -87,13 +106,15 @@
           });
           const json = await res.json();
           if (json.ok) {
-            sendStatus.textContent = 'ارسال شد.';
+            sendStatus.textContent = 'Sent.';
             bodyInput.value = '';
+            // optimistic log (in case SSE delays)
+            addLog({ direction: 'outgoing', to, body, at: new Date().toISOString() });
           } else {
-            sendStatus.textContent = 'خطا در ارسال: ' + (json.error?.error || json.error || 'نامشخص');
+            sendStatus.textContent = 'Send error: ' + (json.error?.error || json.error || 'Unknown');
           }
         } catch (err) {
-          sendStatus.textContent = 'خطای شبکه: ' + err.message;
+          sendStatus.textContent = 'Network error: ' + err.message;
         } finally {
           sendBtn.disabled = false;
         }
