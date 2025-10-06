@@ -2,7 +2,9 @@ const express = require("express");
 const path = require("path");
 const axios = require("axios");
 const cors = require("cors");
-require("dotenv").config();
+// Load env file based on NODE_ENV
+const envFile = process.env.NODE_ENV === 'production' ? '.env.production' : '.env';
+require("dotenv").config({ path: path.join(__dirname, envFile) });
 
 const app = express();
 const PORT = process.env.PORT || 3000;
