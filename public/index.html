@@ -3,7 +3,7 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>WhatsApp Chatbot - UltraMSG</title>
+    <title>Multi-Channel Chatbot</title>
     <style>
       :root {
         --bg: #0b1220;
@@ -15,6 +15,8 @@
         --primary-700: #375fd6;
         --incoming: #f59e9e;
         --outgoing: #97e6c9;
+        --whatsapp: #25d366;
+        --instagram: #e4405f;
       }
       * { box-sizing: border-box; }
       body { font-family: ui-sans-serif, system-ui, Segoe UI, Roboto, Arial, sans-serif; background: var(--bg); color: var(--text); margin: 0; min-height: 100vh; display: grid; place-items: center; }
@@ -23,8 +25,8 @@
       .title { margin: 0 0 8px; font-size: 22px; font-weight: 700; letter-spacing: 0.3px; }
       .subtitle { margin: 0 0 16px; color: var(--muted); font-size: 13px; }
       label { display:block; margin: 12px 0 6px; color: #b7cffc; font-size: 13px; }
-      input, textarea { width: 100%; padding: 12px; border-radius: 10px; border: 1px solid var(--border); background: #0c1422; color: var(--text); outline: none; }
-      input:focus, textarea:focus { border-color: var(--primary); box-shadow: 0 0 0 2px rgba(76,126,243,0.2); }
+      input, textarea, select { width: 100%; padding: 12px; border-radius: 10px; border: 1px solid var(--border); background: #0c1422; color: var(--text); outline: none; }
+      input:focus, textarea:focus, select:focus { border-color: var(--primary); box-shadow: 0 0 0 2px rgba(76,126,243,0.2); }
       button { margin-top: 12px; background: var(--primary); color: white; border: none; padding: 12px 16px; border-radius: 10px; cursor: pointer; font-weight: 600; }
       button:hover { background: var(--primary-700); }
       button:disabled { background: #334155; cursor: not-allowed; }
@@ -36,20 +38,66 @@
       .incoming { color: var(--incoming); }
       .muted { color: var(--muted); font-size: 12px; }
       .row { display: flex; gap: 12px; align-items: center; }
+      
+      /* Tab styles */
+      .tabs { display: flex; gap: 4px; margin-bottom: 20px; }
+      .tab { padding: 12px 20px; border-radius: 10px; cursor: pointer; font-weight: 600; transition: all 0.2s; border: 1px solid var(--border); }
+      .tab.whatsapp { background: rgba(37, 211, 102, 0.1); color: var(--whatsapp); }
+      .tab.instagram { background: rgba(228, 64, 95, 0.1); color: var(--instagram); }
+      .tab.active.whatsapp { background: var(--whatsapp); color: white; }
+      .tab.active.instagram { background: var(--instagram); color: white; }
+      .tab-content { display: none; }
+      .tab-content.active { display: block; }
+      
+      /* Subscribers list */
+      .subscribers { max-height: 200px; overflow: auto; background: #0c1422; border: 1px solid var(--border); border-radius: 12px; margin-bottom: 12px; }
+      .subscriber-item { padding: 12px; border-bottom: 1px solid var(--border); cursor: pointer; transition: background 0.2s; }
+      .subscriber-item:hover { background: rgba(76,126,243,0.1); }
+      .subscriber-item.selected { background: var(--primary); color: white; }
+      .subscriber-item:last-child { border-bottom: none; }
+      .subscriber-name { font-weight: 600; }
+      .subscriber-id { font-size: 11px; color: var(--muted); margin-top: 2px; }
     </style>
   </head>
   <body>
     <div class="container">
       <section class="card">
-        <h1 class="title">WhatsApp Chatbot</h1>
-        <p class="subtitle">UltraMSG + Express · Dark modern UI</p>
-        <label for="to">Recipient phone (with country code)</label>
-        <input id="to" placeholder="e.g. 98912XXXXXXX or +98912XXXXXXX" />
-        <label for="body">Message text</label>
-        <textarea id="body" rows="4" placeholder="Hello! This is a test message."></textarea>
-        <div class="row">
-          <button id="sendBtn">Send Message</button>
-          <p id="sendStatus" class="muted"></p>
+        <h1 class="title">Multi-Channel Chatbot</h1>
+        <p class="subtitle">UltraMSG + SendPulse · Dark modern UI</p>
+        
+        <!-- Tabs -->
+        <div class="tabs">
+          <div class="tab whatsapp active" data-tab="whatsapp">WhatsApp</div>
+          <div class="tab instagram" data-tab="instagram">Instagram</div>
+        </div>
+
+        <!-- WhatsApp Tab Content -->
+        <div id="whatsapp-content" class="tab-content active">
+          <label for="to">Recipient phone (with country code)</label>
+          <input id="to" placeholder="e.g. 98912XXXXXXX or +98912XXXXXXX" />
+          <label for="body">Message text</label>
+          <textarea id="body" rows="4" placeholder="Hello! This is a test message."></textarea>
+          <div class="row">
+            <button id="sendBtn">Send Message</button>
+            <p id="sendStatus" class="muted"></p>
+          </div>
+        </div>
+
+        <!-- Instagram Tab Content -->
+        <div id="instagram-content" class="tab-content">
+          <label for="subscribers">Subscribers</label>
+          <div class="subscribers" id="subscribers">
+            <div class="subscriber-item" style="text-align: center; color: var(--muted); padding: 20px;">
+              Loading subscribers...
+            </div>
+          </div>
+          
+          <label for="messageText">Message text</label>
+          <textarea id="messageText" rows="4" placeholder="Hello! This is a test message."></textarea>
+          <div class="row">
+            <button id="sendToSelected" disabled>Send to selected</button>
+            <p id="instagramSendStatus" class="muted"></p>
+          </div>
         </div>
 
         <div class="section">
@@ -65,13 +113,129 @@
       const sendBtn = document.getElementById('sendBtn');
       const sendStatus = document.getElementById('sendStatus');
       const logs = document.getElementById('logs');
+      const messageTextInput = document.getElementById('messageText');
+      const sendToSelectedBtn = document.getElementById('sendToSelected');
+      const instagramSendStatus = document.getElementById('instagramSendStatus');
+      const subscribersDiv = document.getElementById('subscribers');
+      
+      let selectedSubscriber = null;
+      let subscribers = [];
+      
+      // Tab functionality
+      document.querySelectorAll('.tab').forEach(tab => {
+        tab.addEventListener('click', () => {
+          const tabName = tab.dataset.tab;
+          
+          // Update active tab
+          document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+          tab.classList.add('active');
+          
+          // Update active content
+          document.querySelectorAll('.tab-content').forEach(content => {
+            content.classList.remove('active');
+          });
+          document.getElementById(`${tabName}-content`).classList.add('active');
+          
+          // Load Instagram subscribers when switching to Instagram tab
+          if (tabName === 'instagram') {
+            loadInstagramSubscribers();
+          }
+        });
+      });
+      
+      // Load Instagram subscribers
+      async function loadInstagramSubscribers() {
+        try {
+          const response = await fetch('/instagram/subscribers');
+          const data = await response.json();
+          
+          if (data.ok && data.subscribers) {
+            subscribers = data.subscribers;
+            renderSubscribers();
+          } else {
+            subscribersDiv.innerHTML = '<div class="subscriber-item" style="text-align: center; color: var(--muted); padding: 20px;">No subscribers found</div>';
+          }
+        } catch (error) {
+          subscribersDiv.innerHTML = '<div class="subscriber-item" style="text-align: center; color: var(--muted); padding: 20px;">Error loading subscribers</div>';
+        }
+      }
+      
+      // Render subscribers list
+      function renderSubscribers() {
+        if (subscribers.length === 0) {
+          subscribersDiv.innerHTML = '<div class="subscriber-item" style="text-align: center; color: var(--muted); padding: 20px;">No subscribers found</div>';
+          return;
+        }
+        
+        subscribersDiv.innerHTML = subscribers.map(sub => `
+          <div class="subscriber-item" data-id="${sub.contact_id}">
+            <div class="subscriber-name">${sub.name || sub.username || 'Unknown User'}</div>
+            <div class="subscriber-id">${sub.contact_id}</div>
+          </div>
+        `).join('');
+        
+        // Add click handlers for subscriber selection
+        document.querySelectorAll('.subscriber-item').forEach(item => {
+          item.addEventListener('click', () => {
+            // Remove previous selection
+            document.querySelectorAll('.subscriber-item').forEach(i => i.classList.remove('selected'));
+            
+            // Select current item
+            item.classList.add('selected');
+            selectedSubscriber = item.dataset.id;
+            sendToSelectedBtn.disabled = false;
+          });
+        });
+      }
+      
+      // Instagram send message
+      sendToSelectedBtn.onclick = async () => {
+        const messageText = messageTextInput.value.trim();
+        if (!selectedSubscriber || !messageText) {
+          instagramSendStatus.textContent = 'Select subscriber and enter message.';
+          return;
+        }
+        
+        sendToSelectedBtn.disabled = true;
+        instagramSendStatus.textContent = 'Sending...';
+        
+        try {
+          const res = await fetch('/instagram/send', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ contact_id: selectedSubscriber, message: messageText })
+          });
+          const json = await res.json();
+          
+          if (json.ok) {
+            instagramSendStatus.textContent = 'Sent.';
+            messageTextInput.value = '';
+            // Add optimistic log
+            addLog({ 
+              direction: 'outgoing', 
+              to: selectedSubscriber, 
+              body: messageText, 
+              at: new Date().toISOString(),
+              platform: 'instagram'
+            });
+          } else {
+            instagramSendStatus.textContent = 'Send error: ' + (json.error?.error || json.error || 'Unknown');
+          }
+        } catch (err) {
+          instagramSendStatus.textContent = 'Network error: ' + err.message;
+        } finally {
+          sendToSelectedBtn.disabled = selectedSubscriber ? false : true;
+        }
+      };
+      
       // Deduplication for rapid duplicate events (optimistic + SSE)
       const recentLogKeys = new Map();
       const DEDUP_WINDOW_MS = 3000;
 
       function addLog(event) {
         const dirNorm = event.direction === 'outgoing' ? 'outgoing' : 'incoming';
-        const key = `${dirNorm}|${event.to || ''}|${event.from || ''}|${(event.body || '').trim()}`;
+        const platform = event.platform || 'whatsapp';
+        const key = `${dirNorm}|${platform}|${event.to || ''}|${event.from || ''}|${(event.body || '').trim()}`;
         const now = Date.now();
         const last = recentLogKeys.get(key) || 0;
         if (now - last < DEDUP_WINDOW_MS) {
@@ -81,11 +245,12 @@
         const el = document.createElement('div');
         el.className = 'log-item ' + dirNorm;
         const dir = dirNorm === 'outgoing' ? 'Outgoing' : 'Incoming';
+        const platformLabel = platform === 'instagram' ? '[Instagram]' : '[WhatsApp]';
         const who = event.direction === 'outgoing'
           ? (event.to ? `to ${event.to}` : '')
           : (event.from ? `from ${event.from}` : 'from Unknown');
         const time = new Date(event.at).toLocaleString('fa-IR');
-        el.innerHTML = `<strong>${dir}</strong> ${who ? '('+who+')' : ''}<br/>` +
+        el.innerHTML = `<strong>${dir} ${platformLabel}</strong> ${who ? '('+who+')' : ''}<br/>` +
                        `${event.body ? event.body : '[No text]'}<br/>` +
                        `<span class="muted">${time}</span>`;
         logs.prepend(el);
@@ -120,7 +285,7 @@
             sendStatus.textContent = 'Sent.';
             bodyInput.value = '';
             // optimistic log (in case SSE delays)
-            addLog({ direction: 'outgoing', to, body, at: new Date().toISOString() });
+            addLog({ direction: 'outgoing', to, body, at: new Date().toISOString(), platform: 'whatsapp' });
           } else {
             sendStatus.textContent = 'Send error: ' + (json.error?.error || json.error || 'Unknown');
           }
