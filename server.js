@@ -178,6 +178,7 @@ app.post("/webhook", (req, res) => {
 
   const event = {
     direction: "incoming",
+    platform: "whatsapp", // This is WhatsApp webhook
     from: from || "Unknown",
     to,
     body: body || "[No text]",
@@ -191,11 +192,57 @@ app.post("/webhook", (req, res) => {
   res.json({ received: true });
 });
 
+// Instagram bots endpoint
+app.get("/instagram/bots", async (req, res) => {
+  try {
+    const bots = await spRequest('GET', '/chatbots/bots');
+    
+    if (bots && bots.data) {
+      // Filter Instagram bots
+      const instagramBots = bots.data.filter(bot => 
+        bot.channel === 'instagram' || 
+        bot.type === 'instagram' ||
+        (bot.name && bot.name.toLowerCase().includes('instagram'))
+      );
+      
+      res.json({ ok: true, bots: instagramBots });
+    } else {
+      res.json({ ok: true, bots: [] });
+    }
+  } catch (error) {
+    console.error('Instagram bots error:', error.response?.data || error.message);
+    res.status(500).json({ ok: false, error: error.response?.data || error.message });
+  }
+});
+
 // Instagram subscribers endpoint
 app.get("/instagram/subscribers", async (req, res) => {
   try {
-    // Get Instagram contacts from SendPulse
-    const contacts = await spRequest('GET', '/instagram/contacts');
+    // First get Instagram bots to find bot_id
+    const bots = await spRequest('GET', '/chatbots/bots');
+    let botId = null;
+    
+    if (bots && bots.data) {
+      // Find Instagram bot
+      const instagramBot = bots.data.find(bot => 
+        bot.channel === 'instagram' || 
+        bot.type === 'instagram' ||
+        (bot.name && bot.name.toLowerCase().includes('instagram'))
+      );
+      
+      if (instagramBot) {
+        botId = instagramBot.id;
+        console.log('Instagram bot found:', instagramBot.name, 'ID:', botId);
+      }
+    }
+    
+    if (!botId) {
+      console.log('No Instagram bot found');
+      return res.json({ ok: true, subscribers: [], message: 'No Instagram bot configured' });
+    }
+    
+    // Get Instagram contacts from SendPulse with bot_id
+    const contacts = await spRequest('GET', `/instagram/contacts?bot_id=${botId}`);
     
     if (contacts && contacts.data) {
       const subscribers = contacts.data.map(contact => ({
@@ -227,10 +274,36 @@ app.post("/instagram/send", async (req, res) => {
       });
     }
 
-    // Send message via SendPulse Instagram API
+    // First get Instagram bots to find bot_id
+    const bots = await spRequest('GET', '/chatbots/bots');
+    let botId = null;
+    
+    if (bots && bots.data) {
+      // Find Instagram bot
+      const instagramBot = bots.data.find(bot => 
+        bot.channel === 'instagram' || 
+        bot.type === 'instagram' ||
+        (bot.name && bot.name.toLowerCase().includes('instagram'))
+      );
+      
+      if (instagramBot) {
+        botId = instagramBot.id;
+        console.log('Instagram send: using bot_id', botId);
+      }
+    }
+    
+    if (!botId) {
+      return res.status(400).json({ 
+        ok: false, 
+        error: "No Instagram bot configured" 
+      });
+    }
+
+    // Send message via SendPulse Instagram API with bot_id
     const result = await spRequest('POST', '/instagram/contacts/send', {
       contact_id,
-      message
+      message,
+      bot_id: botId
     });
 
     // Broadcast the outgoing message

@@ -234,7 +234,7 @@
 
       function addLog(event) {
         const dirNorm = event.direction === 'outgoing' ? 'outgoing' : 'incoming';
-        const platform = event.platform || 'whatsapp';
+        const platform = event.platform || 'whatsapp'; // Default to WhatsApp if no platform specified
         const key = `${dirNorm}|${platform}|${event.to || ''}|${event.from || ''}|${(event.body || '').trim()}`;
         const now = Date.now();
         const last = recentLogKeys.get(key) || 0;
