@@ -330,7 +330,12 @@ app.post("/instagram/send", async (req, res) => {
     // Send message via SendPulse Instagram API with bot_id
     const result = await spRequest('POST', '/instagram/contacts/send', {
       contact_id,
-      message,
+      messages: [
+        {
+          type: "text",
+          message: message
+        }
+      ],
       bot_id: botId
     });
 
