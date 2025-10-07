@@ -196,17 +196,28 @@ app.post("/webhook", (req, res) => {
 app.get("/instagram/bots", async (req, res) => {
   try {
     const bots = await spRequest('GET', '/chatbots/bots');
+    console.log('All bots response:', JSON.stringify(bots, null, 2));
     
     if (bots && bots.data) {
-      // Filter Instagram bots
+      console.log('Available bots:', bots.data.map(bot => ({
+        id: bot.id,
+        name: bot.name,
+        channel: bot.channel,
+        type: bot.type,
+        status: bot.status
+      })));
+      
+      // Filter Instagram bots - check for case-insensitive matches
       const instagramBots = bots.data.filter(bot => 
-        bot.channel === 'instagram' || 
-        bot.type === 'instagram' ||
+        (bot.channel && bot.channel.toLowerCase() === 'instagram') || 
+        (bot.type && bot.type.toLowerCase() === 'instagram') ||
         (bot.name && bot.name.toLowerCase().includes('instagram'))
       );
       
+      console.log('Filtered Instagram bots:', instagramBots);
       res.json({ ok: true, bots: instagramBots });
     } else {
+      console.log('No bots data received');
       res.json({ ok: true, bots: [] });
     }
   } catch (error) {
@@ -220,19 +231,29 @@ app.get("/instagram/subscribers", async (req, res) => {
   try {
     // First get Instagram bots to find bot_id
     const bots = await spRequest('GET', '/chatbots/bots');
+    console.log('Bots for subscribers:', JSON.stringify(bots, null, 2));
     let botId = null;
     
     if (bots && bots.data) {
-      // Find Instagram bot
+      console.log('Looking for Instagram bot in:', bots.data.map(bot => ({
+        id: bot.id,
+        name: bot.name,
+        channel: bot.channel,
+        type: bot.type
+      })));
+      
+      // Find Instagram bot - check for case-insensitive matches
       const instagramBot = bots.data.find(bot => 
-        bot.channel === 'instagram' || 
-        bot.type === 'instagram' ||
+        (bot.channel && bot.channel.toLowerCase() === 'instagram') || 
+        (bot.type && bot.type.toLowerCase() === 'instagram') ||
         (bot.name && bot.name.toLowerCase().includes('instagram'))
       );
       
       if (instagramBot) {
         botId = instagramBot.id;
         console.log('Instagram bot found:', instagramBot.name, 'ID:', botId);
+      } else {
+        console.log('No Instagram bot found in available bots');
       }
     }
     
@@ -242,18 +263,25 @@ app.get("/instagram/subscribers", async (req, res) => {
     }
     
     // Get Instagram contacts from SendPulse with bot_id
+    console.log('Fetching contacts with bot_id:', botId);
     const contacts = await spRequest('GET', `/instagram/contacts?bot_id=${botId}`);
+    console.log('Contacts response:', JSON.stringify(contacts, null, 2));
     
     if (contacts && contacts.data) {
       const subscribers = contacts.data.map(contact => ({
-        contact_id: contact.contact_id,
-        name: contact.name || contact.first_name || null,
-        username: contact.username || null,
-        avatar: contact.avatar || null
+        contact_id: contact.id,
+        name: contact.channel_data?.name || contact.channel_data?.first_name + ' ' + contact.channel_data?.last_name || null,
+        username: contact.channel_data?.user_name || null,
+        avatar: contact.channel_data?.profile_pic || null,
+        is_verified: contact.channel_data?.is_verified_user || false,
+        follower_count: contact.channel_data?.follower_count || 0,
+        last_activity: contact.last_activity_at
       }));
       
+      console.log('Processed subscribers:', subscribers);
       res.json({ ok: true, subscribers });
     } else {
+      console.log('No contacts data received');
       res.json({ ok: true, subscribers: [] });
     }
   } catch (error) {
@@ -279,10 +307,10 @@ app.post("/instagram/send", async (req, res) => {
     let botId = null;
     
     if (bots && bots.data) {
-      // Find Instagram bot
+      // Find Instagram bot - check for case-insensitive matches
       const instagramBot = bots.data.find(bot => 
-        bot.channel === 'instagram' || 
-        bot.type === 'instagram' ||
+        (bot.channel && bot.channel.toLowerCase() === 'instagram') || 
+        (bot.type && bot.type.toLowerCase() === 'instagram') ||
         (bot.name && bot.name.toLowerCase().includes('instagram'))
       );
       
@@ -331,14 +359,52 @@ app.post("/instagram/webhook", (req, res) => {
     const payload = req.body || {};
     console.log('Instagram webhook received:', JSON.stringify(payload, null, 2));
 
-    // Extract message data from SendPulse Instagram webhook
-    const contact_id = payload.contact_id || payload.from || null;
-    const message = payload.message || payload.text || payload.body || null;
-    const message_type = payload.message_type || payload.type || 'text';
+    // Try multiple possible field names for SendPulse Instagram webhook
+    const contact_id = payload.contact_id || 
+                      payload.from || 
+                      payload.sender_id || 
+                      payload.user_id ||
+                      (payload.contact && payload.contact.id) ||
+                      (payload.sender && payload.sender.id) ||
+                      null;
+                      
+    const message = payload.message || 
+                   payload.text || 
+                   payload.body || 
+                   payload.content ||
+                   (payload.message_data && payload.message_data.text) ||
+                   (payload.data && payload.data.message) ||
+                   null;
+                   
+    const message_type = payload.message_type || 
+                        payload.type || 
+                        payload.event_type ||
+                        'text';
+
+    // Try to get user info for better display
+    const username = payload.username || 
+                    (payload.contact && payload.contact.username) ||
+                    (payload.sender && payload.sender.username) ||
+                    null;
+                    
+    const name = payload.name || 
+                (payload.contact && payload.contact.name) ||
+                (payload.sender && payload.sender.name) ||
+                null;
+
+    console.log('Parsed webhook data:', {
+      contact_id,
+      message,
+      message_type,
+      username,
+      name
+    });
+
+    const displayName = name || username || contact_id || "Unknown";
 
     const event = {
       direction: "incoming",
-      from: contact_id || "Unknown",
+      from: displayName,
       to: null,
       body: message || "[No text]",
       type: message_type,
@@ -347,6 +413,7 @@ app.post("/instagram/webhook", (req, res) => {
       at: new Date().toISOString(),
     };
 
+    console.log('Broadcasting Instagram event:', event);
     pushAndBroadcast(event);
     res.json({ received: true });
   } catch (error) {
