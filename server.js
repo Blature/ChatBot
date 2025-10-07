@@ -333,7 +333,9 @@ app.post("/instagram/send", async (req, res) => {
       messages: [
         {
           type: "text",
-          message: message
+          message: {
+            text: message
+          }
         }
       ],
       bot_id: botId
