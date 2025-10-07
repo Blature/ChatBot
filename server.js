@@ -153,6 +153,13 @@ app.post("/send", async (req, res) => {
 });
 
 app.post("/webhook", (req, res) => {
+  console.log("=== WHATSAPP WEBHOOK RECEIVED ===");
+  console.log("Full payload:", JSON.stringify(req.body, null, 2));
+  console.log("Headers:", JSON.stringify(req.headers, null, 2));
+  console.log("Method:", req.method);
+  console.log("URL:", req.url);
+  console.log("Query params:", JSON.stringify(req.query, null, 2));
+  
   // Normalize incoming payload for different UltraMSG formats
   const payload = req.body || {};
   const nested = payload.data || payload.message || payload.payload || {};
@@ -201,6 +208,14 @@ app.post("/webhook", (req, res) => {
     raw: payload,
     at: new Date().toISOString(),
   };
+
+  console.log("=== WHATSAPP PARSED DATA ===");
+  console.log("Extracted from:", from);
+  console.log("Extracted to:", to);
+  console.log("Extracted body:", body);
+  console.log("Extracted type:", type);
+  console.log("Final event:", JSON.stringify(event, null, 2));
+  console.log("=== END WHATSAPP WEBHOOK ===");
 
   pushAndBroadcast(event);
 
