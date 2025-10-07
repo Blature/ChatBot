@@ -412,12 +412,13 @@ app.post("/instagram/send", async (req, res) => {
 // Instagram webhook endpoint
 app.post("/instagram/webhook", (req, res) => {
   try {
-    console.log(req);
     const payload = req.body || {};
-    console.log(
-      "Instagram webhook received:",
-      JSON.stringify(payload, null, 2)
-    );
+    console.log("=== INSTAGRAM WEBHOOK RECEIVED ===");
+    console.log("Full payload:", JSON.stringify(payload, null, 2));
+    console.log("Headers:", JSON.stringify(req.headers, null, 2));
+    console.log("Method:", req.method);
+    console.log("URL:", req.url);
+    console.log("Query params:", JSON.stringify(req.query, null, 2));
 
     // Try multiple possible field names for SendPulse Instagram webhook
     const contact_id =
@@ -454,13 +455,29 @@ app.post("/instagram/webhook", (req, res) => {
       (payload.sender && payload.sender.name) ||
       null;
 
-    console.log("Parsed webhook data:", {
-      contact_id,
-      message,
-      message_type,
-      username,
-      name,
-    });
+    console.log("=== PARSING WEBHOOK DATA ===");
+    console.log("Extracted contact_id:", contact_id);
+    console.log("Extracted message:", message);
+    console.log("Extracted message_type:", message_type);
+    console.log("Extracted username:", username);
+    console.log("Extracted name:", name);
+    
+    // Additional detailed field extraction logging
+    console.log("=== FIELD EXTRACTION DETAILS ===");
+    console.log("payload.contact_id:", payload.contact_id);
+    console.log("payload.from:", payload.from);
+    console.log("payload.sender_id:", payload.sender_id);
+    console.log("payload.user_id:", payload.user_id);
+    console.log("payload.contact:", payload.contact);
+    console.log("payload.sender:", payload.sender);
+    console.log("payload.message:", payload.message);
+    console.log("payload.text:", payload.text);
+    console.log("payload.body:", payload.body);
+    console.log("payload.content:", payload.content);
+    console.log("payload.message_data:", payload.message_data);
+    console.log("payload.data:", payload.data);
+    console.log("payload.username:", payload.username);
+    console.log("payload.name:", payload.name);
 
     const displayName = name || username || contact_id || "Unknown";
 
@@ -475,7 +492,11 @@ app.post("/instagram/webhook", (req, res) => {
       at: new Date().toISOString(),
     };
 
-    console.log("Broadcasting Instagram event:", event);
+    console.log("=== FINAL EVENT DATA ===");
+    console.log("Display name used:", displayName);
+    console.log("Event to broadcast:", JSON.stringify(event, null, 2));
+    console.log("=== END WEBHOOK PROCESSING ===");
+    
     pushAndBroadcast(event);
     res.json({ received: true });
   } catch (error) {
