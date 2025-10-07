@@ -32,11 +32,22 @@
       button:disabled { background: #334155; cursor: not-allowed; }
       .section { margin-top: 18px; }
       .logs { max-height: 340px; overflow: auto; background: #0c1422; border: 1px solid var(--border); border-radius: 12px; padding: 10px; }
-      .log-item { padding: 10px; border-bottom: 1px dashed var(--border); }
+      .log-item { padding: 12px; border-bottom: 1px dashed var(--border); display: flex; align-items: flex-start; gap: 12px; }
       .log-item:last-child { border-bottom: none; }
-      .outgoing { color: var(--outgoing); }
-      .incoming { color: var(--incoming); }
-      .muted { color: var(--muted); font-size: 12px; }
+      .log-avatar { width: 40px; height: 40px; border-radius: 50%; background: var(--border); flex-shrink: 0; overflow: hidden; display: flex; align-items: center; justify-content: center; color: var(--muted); font-size: 12px; }
+      .log-avatar img { width: 100%; height: 100%; object-fit: cover; }
+      .log-content { flex: 1; }
+      .log-header { display: flex; align-items: center; gap: 8px; margin-bottom: 4px; }
+      .log-platform { padding: 2px 6px; border-radius: 4px; font-size: 10px; font-weight: 600; text-transform: uppercase; }
+      .log-platform.whatsapp { background: rgba(37, 211, 102, 0.2); color: var(--whatsapp); }
+      .log-platform.instagram { background: rgba(228, 64, 95, 0.2); color: var(--instagram); }
+      .log-direction { font-weight: 600; font-size: 12px; }
+      .log-user { font-size: 13px; color: var(--text); }
+      .log-username { font-size: 11px; color: var(--muted); margin-left: 4px; }
+      .log-message { margin: 6px 0; color: var(--text); line-height: 1.4; }
+      .log-time { font-size: 11px; color: var(--muted); }
+      .outgoing .log-direction { color: var(--outgoing); }
+      .incoming .log-direction { color: var(--incoming); }
       .row { display: flex; gap: 12px; align-items: center; }
       
       /* Tab styles */
@@ -242,17 +253,82 @@
           return; // skip duplicates arriving within short window
         }
         recentLogKeys.set(key, now);
+        
         const el = document.createElement('div');
         el.className = 'log-item ' + dirNorm;
+        
         const dir = dirNorm === 'outgoing' ? 'Outgoing' : 'Incoming';
-        const platformLabel = platform === 'instagram' ? '[Instagram]' : '[WhatsApp]';
-        const who = event.direction === 'outgoing'
-          ? (event.to ? `to ${event.to}` : '')
-          : (event.from ? `from ${event.from}` : 'from Unknown');
         const time = new Date(event.at).toLocaleString('fa-IR');
-        el.innerHTML = `<strong>${dir} ${platformLabel}</strong> ${who ? '('+who+')' : ''}<br/>` +
-                       `${event.body ? event.body : '[No text]'}<br/>` +
-                       `<span class="muted">${time}</span>`;
+        
+        // Create avatar
+        const avatar = document.createElement('div');
+        avatar.className = 'log-avatar';
+        
+        if (platform === 'instagram' && event.photo) {
+          const img = document.createElement('img');
+          img.src = event.photo;
+          img.alt = event.from || 'User';
+          img.onerror = () => {
+            avatar.innerHTML = (event.from || 'U').charAt(0).toUpperCase();
+          };
+          avatar.appendChild(img);
+        } else {
+          avatar.innerHTML = (event.from || 'U').charAt(0).toUpperCase();
+        }
+        
+        // Create content
+        const content = document.createElement('div');
+        content.className = 'log-content';
+        
+        const header = document.createElement('div');
+        header.className = 'log-header';
+        
+        const platformBadge = document.createElement('span');
+        platformBadge.className = `log-platform ${platform}`;
+        platformBadge.textContent = platform === 'instagram' ? 'Instagram' : 'WhatsApp';
+        
+        const direction = document.createElement('span');
+        direction.className = 'log-direction';
+        direction.textContent = dir;
+        
+        const user = document.createElement('span');
+        user.className = 'log-user';
+        
+        if (event.direction === 'outgoing') {
+          user.textContent = event.to ? `to ${event.to}` : '';
+        } else {
+          user.textContent = event.from || 'Unknown';
+          
+          // Add username for Instagram
+          if (platform === 'instagram' && event.username) {
+            const username = document.createElement('span');
+            username.className = 'log-username';
+            username.textContent = `@${event.username}`;
+            user.appendChild(username);
+          }
+        }
+        
+        header.appendChild(platformBadge);
+        header.appendChild(direction);
+        if (user.textContent || user.children.length > 0) {
+          header.appendChild(user);
+        }
+        
+        const message = document.createElement('div');
+        message.className = 'log-message';
+        message.textContent = event.body || '[No text]';
+        
+        const timeEl = document.createElement('div');
+        timeEl.className = 'log-time';
+        timeEl.textContent = time;
+        
+        content.appendChild(header);
+        content.appendChild(message);
+        content.appendChild(timeEl);
+        
+        el.appendChild(avatar);
+        el.appendChild(content);
+        
         logs.prepend(el);
       }
 

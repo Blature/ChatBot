@@ -153,6 +153,45 @@ app.post("/send", async (req, res) => {
 });
 
 app.post("/webhook", (req, res) => {
+  // Check if this is actually an Instagram message
+  const payload = req.body || {};
+  const isInstagram = Array.isArray(payload) && payload.length > 0 && 
+                     (payload[0].service === "instagram" || payload[0].bot?.channel === "INSTAGRAM");
+  
+  if (isInstagram) {
+    console.log("=== INSTAGRAM MESSAGE RECEIVED VIA WHATSAPP WEBHOOK ===");
+    console.log("Full payload:", JSON.stringify(req.body, null, 2));
+    
+    const instagramData = payload[0];
+    const contact = instagramData.contact || {};
+    const messageData = instagramData.info?.message?.channel_data?.message || {};
+    
+    const event = {
+      direction: "incoming",
+      platform: "instagram",
+      from: contact.name || contact.username || "Unknown",
+      username: contact.username || null,
+      photo: contact.photo || null,
+      body: messageData.text || contact.last_message || "[No text]",
+      type: "text",
+      raw: payload,
+      at: new Date().toISOString(),
+    };
+
+    console.log("=== INSTAGRAM PARSED DATA ===");
+    console.log("Contact name:", contact.name);
+    console.log("Contact username:", contact.username);
+    console.log("Contact photo:", contact.photo);
+    console.log("Message text:", messageData.text);
+    console.log("Final event:", JSON.stringify(event, null, 2));
+    console.log("=== END INSTAGRAM WEBHOOK ===");
+
+    pushAndBroadcast(event);
+    res.status(200).json({ ok: true });
+    return;
+  }
+
+  // Handle regular WhatsApp messages
   console.log("=== WHATSAPP WEBHOOK RECEIVED ===");
   console.log("Full payload:", JSON.stringify(req.body, null, 2));
   console.log("Headers:", JSON.stringify(req.headers, null, 2));
@@ -161,7 +200,6 @@ app.post("/webhook", (req, res) => {
   console.log("Query params:", JSON.stringify(req.query, null, 2));
   
   // Normalize incoming payload for different UltraMSG formats
-  const payload = req.body || {};
   const nested = payload.data || payload.message || payload.payload || {};
   const arrMsg =
     Array.isArray(payload.messages) && payload.messages.length
@@ -200,7 +238,7 @@ app.post("/webhook", (req, res) => {
 
   const event = {
     direction: "incoming",
-    platform: "whatsapp", // This is WhatsApp webhook
+    platform: "whatsapp",
     from: from || "Unknown",
     to,
     body: body || "[No text]",
