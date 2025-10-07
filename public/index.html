@@ -246,24 +246,13 @@
       function addLog(event) {
         const dirNorm = event.direction === 'outgoing' ? 'outgoing' : 'incoming';
         const platform = event.platform || 'whatsapp'; // Default to WhatsApp if no platform specified
-        
-        // Create a more unique key that includes timestamp to prevent false duplicates
-        const timestamp = event.at || new Date().toISOString();
-        const key = `${dirNorm}|${platform}|${event.to || ''}|${event.from || ''}|${(event.body || '').trim()}|${timestamp}`;
-        
-        // Check if this exact event was already processed
-        if (recentLogKeys.has(key)) {
-          return; // skip exact duplicates
-        }
-        recentLogKeys.set(key, Date.now());
-        
-        // Clean up old entries to prevent memory leaks
+        const key = `${dirNorm}|${platform}|${event.to || ''}|${event.from || ''}|${(event.body || '').trim()}`;
         const now = Date.now();
-        for (const [oldKey, oldTime] of recentLogKeys.entries()) {
-          if (now - oldTime > DEDUP_WINDOW_MS) {
-            recentLogKeys.delete(oldKey);
-          }
+        const last = recentLogKeys.get(key) || 0;
+        if (now - last < DEDUP_WINDOW_MS) {
+          return; // skip duplicates arriving within short window
         }
+        recentLogKeys.set(key, now);
         
         const el = document.createElement('div');
         el.className = 'log-item ' + dirNorm;
