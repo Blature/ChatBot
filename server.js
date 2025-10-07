@@ -119,36 +119,45 @@ app.get("/health", (req, res) => {
 
 app.post("/send", async (req, res) => {
   try {
-    const { to, body } = req.body;
-    if (!to || !body) {
-      return res
-        .status(400)
-        .json({ error: "Parameters 'to' and 'body' are required." });
+    const { to, message } = req.body;
+    
+    const bots = await spRequest("GET", "/chatbots/bots");
+    const instagramBot = bots.data.find(
+      (bot) => bot.channel === "INSTAGRAM" && bot.status === "active"
+    );
+
+    if (!instagramBot) {
+      return res.status(404).json({ error: "No Instagram bot found" });
     }
 
-    const url = `${ULTRAMSG_BASE_URL}/${INSTANCE_ID}/messages/chat`;
-    const params = new URLSearchParams();
-    params.append("token", ULTRAMSG_TOKEN);
-    params.append("to", to);
-    params.append("body", body);
-
-    const response = await axios.post(url, params, {
-      headers: { "Content-Type": "application/x-www-form-urlencoded" },
+    const botId = instagramBot.id;
+    const result = await spRequest("POST", "/instagram/contacts/send", {
+      contact_id: to,
+      messages: [
+        {
+          type: "text",
+          message: {
+            text: message,
+          },
+        },
+      ],
+      bot_id: botId,
     });
 
-    pushAndBroadcast({
+    const event = {
       direction: "outgoing",
+      platform: "instagram",
+      from: "U",
       to,
-      body,
-      providerResponse: response.data,
+      body: message,
+      type: "text",
       at: new Date().toISOString(),
-    });
+    };
 
-    res.json({ ok: true, result: response.data });
-  } catch (err) {
-    const status = err.response?.status || 500;
-    const data = err.response?.data || { error: err.message };
-    res.status(status).json({ ok: false, error: data });
+    pushAndBroadcast(event);
+    res.json({ success: true, result });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
   }
 });
 
@@ -159,9 +168,6 @@ app.post("/webhook", (req, res) => {
                      (payload[0].service === "instagram" || payload[0].bot?.channel === "INSTAGRAM");
   
   if (isInstagram) {
-    console.log("=== INSTAGRAM MESSAGE RECEIVED VIA WHATSAPP WEBHOOK ===");
-    console.log("Full payload:", JSON.stringify(req.body, null, 2));
-    
     const instagramData = payload[0];
     const contact = instagramData.contact || {};
     const messageData = instagramData.info?.message?.channel_data?.message || {};
@@ -178,27 +184,12 @@ app.post("/webhook", (req, res) => {
       at: new Date().toISOString(),
     };
 
-    console.log("=== INSTAGRAM PARSED DATA ===");
-    console.log("Contact name:", contact.name);
-    console.log("Contact username:", contact.username);
-    console.log("Contact photo:", contact.photo);
-    console.log("Message text:", messageData.text);
-    console.log("Final event:", JSON.stringify(event, null, 2));
-    console.log("=== END INSTAGRAM WEBHOOK ===");
-
     pushAndBroadcast(event);
     res.status(200).json({ ok: true });
     return;
   }
 
   // Handle regular WhatsApp messages
-  console.log("=== WHATSAPP WEBHOOK RECEIVED ===");
-  console.log("Full payload:", JSON.stringify(req.body, null, 2));
-  console.log("Headers:", JSON.stringify(req.headers, null, 2));
-  console.log("Method:", req.method);
-  console.log("URL:", req.url);
-  console.log("Query params:", JSON.stringify(req.query, null, 2));
-  
   // Normalize incoming payload for different UltraMSG formats
   const nested = payload.data || payload.message || payload.payload || {};
   const arrMsg =
@@ -247,59 +238,60 @@ app.post("/webhook", (req, res) => {
     at: new Date().toISOString(),
   };
 
-  console.log("=== WHATSAPP PARSED DATA ===");
-  console.log("Extracted from:", from);
-  console.log("Extracted to:", to);
-  console.log("Extracted body:", body);
-  console.log("Extracted type:", type);
-  console.log("Final event:", JSON.stringify(event, null, 2));
-  console.log("=== END WHATSAPP WEBHOOK ===");
-
   pushAndBroadcast(event);
 
   res.json({ received: true });
 });
 
-// Instagram bots endpoint
-app.get("/instagram/bots", async (req, res) => {
+app.get("/bots", async (req, res) => {
   try {
     const bots = await spRequest("GET", "/chatbots/bots");
-    console.log("All bots response:", JSON.stringify(bots, null, 2));
-
-    if (bots && bots.data) {
-      console.log(
-        "Available bots:",
-        bots.data.map((bot) => ({
-          id: bot.id,
-          name: bot.name,
-          channel: bot.channel,
-          type: bot.type,
-          status: bot.status,
-        }))
-      );
-
-      // Filter Instagram bots - check for case-insensitive matches
-      const instagramBots = bots.data.filter(
-        (bot) =>
-          (bot.channel && bot.channel.toLowerCase() === "instagram") ||
-          (bot.type && bot.type.toLowerCase() === "instagram") ||
-          (bot.name && bot.name.toLowerCase().includes("instagram"))
-      );
-
-      console.log("Filtered Instagram bots:", instagramBots);
-      res.json({ ok: true, bots: instagramBots });
-    } else {
-      console.log("No bots data received");
-      res.json({ ok: true, bots: [] });
-    }
-  } catch (error) {
-    console.error(
-      "Instagram bots error:",
-      error.response?.data || error.message
+    
+    const instagramBots = bots.data.filter(
+      (bot) => bot.channel === "INSTAGRAM" && bot.status === "active"
     );
-    res
-      .status(500)
-      .json({ ok: false, error: error.response?.data || error.message });
+
+    res.json({ bots: instagramBots });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+app.get("/subscribers", async (req, res) => {
+  try {
+    const bots = await spRequest("GET", "/chatbots/bots");
+    
+    const instagramBot = bots.data.find(
+      (bot) => bot.channel === "INSTAGRAM" && bot.status === "active"
+    );
+
+    if (!instagramBot) {
+      return res.status(404).json({ error: "No Instagram bot found" });
+    }
+
+    const botId = instagramBot.id;
+    const contacts = await spRequest(
+      "GET",
+      `/instagram/contacts?bot_id=${botId}`
+    );
+    
+    const subscribers = contacts.data.map((contact) => ({
+      id: contact.id,
+      name: contact.channel_data?.name ||
+        contact.channel_data?.first_name +
+          " " +
+          contact.channel_data?.last_name ||
+        contact.channel_data?.user_name ||
+        "Unknown",
+      username: contact.channel_data?.user_name || null,
+      photo: contact.channel_data?.profile_pic || null,
+      last_message: contact.last_message,
+      last_activity: contact.last_activity_at,
+    }));
+
+    res.json({ subscribers });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
   }
 });
 
@@ -464,98 +456,30 @@ app.post("/instagram/send", async (req, res) => {
 
 // Instagram webhook endpoint
 app.post("/instagram/webhook", (req, res) => {
-  try {
-    const payload = req.body || {};
-    console.log("=== INSTAGRAM WEBHOOK RECEIVED ===");
-    console.log("Full payload:", JSON.stringify(payload, null, 2));
-    console.log("Headers:", JSON.stringify(req.headers, null, 2));
-    console.log("Method:", req.method);
-    console.log("URL:", req.url);
-    console.log("Query params:", JSON.stringify(req.query, null, 2));
+  const payload = req.body || {};
+  
+  const contact_id = payload.contact_id || payload.from || payload.sender_id || payload.user_id;
+  const message = payload.message || payload.text || payload.body || payload.content;
+  const message_type = payload.message_type || payload.type || "text";
+  const username = payload.username || payload.name || (payload.contact && payload.contact.username);
+  const name = payload.name || (payload.contact && payload.contact.name) || (payload.sender && payload.sender.name);
 
-    // Try multiple possible field names for SendPulse Instagram webhook
-    const contact_id =
-      payload.contact_id ||
-      payload.from ||
-      payload.sender_id ||
-      payload.user_id ||
-      (payload.contact && payload.contact.id) ||
-      (payload.sender && payload.sender.id) ||
-      null;
+  const displayName = name || username || contact_id || "Unknown";
 
-    const message =
-      payload.message ||
-      payload.text ||
-      payload.body ||
-      payload.content ||
-      (payload.message_data && payload.message_data.text) ||
-      (payload.data && payload.data.message) ||
-      null;
+  const event = {
+    direction: "incoming",
+    platform: "instagram",
+    from: displayName,
+    username: username || null,
+    photo: payload.photo || (payload.contact && payload.contact.photo) || null,
+    body: message || "[No text]",
+    type: message_type,
+    raw: payload,
+    at: new Date().toISOString(),
+  };
 
-    const message_type =
-      payload.message_type || payload.type || payload.event_type || "text";
-
-    // Try to get user info for better display
-    const username =
-      payload.username ||
-      (payload.contact && payload.contact.username) ||
-      (payload.sender && payload.sender.username) ||
-      null;
-
-    const name =
-      payload.name ||
-      (payload.contact && payload.contact.name) ||
-      (payload.sender && payload.sender.name) ||
-      null;
-
-    console.log("=== PARSING WEBHOOK DATA ===");
-    console.log("Extracted contact_id:", contact_id);
-    console.log("Extracted message:", message);
-    console.log("Extracted message_type:", message_type);
-    console.log("Extracted username:", username);
-    console.log("Extracted name:", name);
-    
-    // Additional detailed field extraction logging
-    console.log("=== FIELD EXTRACTION DETAILS ===");
-    console.log("payload.contact_id:", payload.contact_id);
-    console.log("payload.from:", payload.from);
-    console.log("payload.sender_id:", payload.sender_id);
-    console.log("payload.user_id:", payload.user_id);
-    console.log("payload.contact:", payload.contact);
-    console.log("payload.sender:", payload.sender);
-    console.log("payload.message:", payload.message);
-    console.log("payload.text:", payload.text);
-    console.log("payload.body:", payload.body);
-    console.log("payload.content:", payload.content);
-    console.log("payload.message_data:", payload.message_data);
-    console.log("payload.data:", payload.data);
-    console.log("payload.username:", payload.username);
-    console.log("payload.name:", payload.name);
-
-    const displayName = name || username || contact_id || "Unknown";
-
-    const event = {
-      direction: "incoming",
-      from: displayName,
-      to: null,
-      body: message || "[No text]",
-      type: message_type,
-      platform: "instagram",
-      raw: payload,
-      at: new Date().toISOString(),
-    };
-
-    console.log("=== FINAL EVENT DATA ===");
-    console.log("Display name used:", displayName);
-    console.log("Event to broadcast:", JSON.stringify(event, null, 2));
-    console.log("=== END WEBHOOK PROCESSING ===");
-    
-    pushAndBroadcast(event);
-    res.json({ received: true });
-  } catch (error) {
-    console.error("Instagram webhook error:", error);
-    res.status(500).json({ error: "Webhook processing failed" });
-  }
+  pushAndBroadcast(event);
+  res.status(200).json({ ok: true });
 });
 
 app.get("*", (req, res) => {
