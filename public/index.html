@@ -41,6 +41,7 @@
       .log-platform { padding: 2px 6px; border-radius: 4px; font-size: 10px; font-weight: 600; text-transform: uppercase; }
       .log-platform.whatsapp { background: rgba(37, 211, 102, 0.2); color: var(--whatsapp); }
       .log-platform.instagram { background: rgba(228, 64, 95, 0.2); color: var(--instagram); }
+      .log-platform.eitaa { background: rgba(255, 153, 0, 0.18); color: #ff9900; }
       .log-direction { font-weight: 600; font-size: 12px; }
       .log-user { font-size: 13px; color: var(--text); }
       .log-username { font-size: 11px; color: var(--muted); margin-left: 4px; }
@@ -55,8 +56,10 @@
       .tab { padding: 12px 20px; border-radius: 10px; cursor: pointer; font-weight: 600; transition: all 0.2s; border: 1px solid var(--border); }
       .tab.whatsapp { background: rgba(37, 211, 102, 0.1); color: var(--whatsapp); }
       .tab.instagram { background: rgba(228, 64, 95, 0.1); color: var(--instagram); }
+      .tab.eitaa { background: rgba(255, 153, 0, 0.1); color: #ff9900; }
       .tab.active.whatsapp { background: var(--whatsapp); color: white; }
       .tab.active.instagram { background: var(--instagram); color: white; }
+      .tab.active.eitaa { background: #ff9900; color: white; }
       .tab-content { display: none; }
       .tab-content.active { display: block; }
       
@@ -80,6 +83,7 @@
         <div class="tabs">
           <div class="tab whatsapp active" data-tab="whatsapp">WhatsApp</div>
           <div class="tab instagram" data-tab="instagram">Instagram</div>
+          <div class="tab eitaa" data-tab="eitaa">Eitaa</div>
         </div>
 
         <!-- WhatsApp Tab Content -->
@@ -111,6 +115,23 @@
           </div>
         </div>
 
+        <!-- Eitaa Tab Content -->
+        <div id="eitaa-content" class="tab-content">
+          <label for="eitaa-subscribers">Eitaa Contacts</label>
+          <div class="subscribers" id="eitaa-subscribers">
+            <div class="subscriber-item" style="text-align: center; color: var(--muted); padding: 20px;">
+              Loading contacts...
+            </div>
+          </div>
+
+          <label for="eitaaMessageText">Message text</label>
+          <textarea id="eitaaMessageText" rows="4" placeholder="Hello! This is a test message."></textarea>
+          <div class="row">
+            <button id="eitaaSendToSelected" disabled>Send to selected</button>
+            <p id="eitaaSendStatus" class="muted"></p>
+          </div>
+        </div>
+
         <div class="section">
           <h2 class="title" style="font-size:18px;">Live incoming/outgoing logs</h2>
           <div class="logs" id="logs"></div>
@@ -128,6 +149,10 @@
       const sendToSelectedBtn = document.getElementById('sendToSelected');
       const instagramSendStatus = document.getElementById('instagramSendStatus');
       const subscribersDiv = document.getElementById('subscribers');
+      const eitaaSubscribersDiv = document.getElementById('eitaa-subscribers');
+      const eitaaMessageTextInput = document.getElementById('eitaaMessageText');
+      const eitaaSendToSelectedBtn = document.getElementById('eitaaSendToSelected');
+      const eitaaSendStatus = document.getElementById('eitaaSendStatus');
       
       let selectedSubscriber = null;
       let subscribers = [];
@@ -147,9 +172,11 @@
           });
           document.getElementById(`${tabName}-content`).classList.add('active');
           
-          // Load Instagram subscribers when switching to Instagram tab
+          // Load platform-specific subscribers when switching tabs
           if (tabName === 'instagram') {
             loadInstagramSubscribers();
+          } else if (tabName === 'eitaa') {
+            loadEitaaSubscribers();
           }
         });
       });
@@ -198,6 +225,66 @@
           });
         });
       }
+
+      // Load Eitaa subscribers
+      async function loadEitaaSubscribers() {
+        try {
+          const response = await fetch('/eitaa/subscribers');
+          const data = await response.json();
+          if (data.ok && data.subscribers) {
+            // Reuse list format
+            eitaaSubscribersDiv.innerHTML = data.subscribers.map(sub => `
+              <div class="subscriber-item" data-id="${sub.contact_id}">
+                <div class="subscriber-name">${sub.name || sub.username || 'Unknown User'}</div>
+                <div class="subscriber-id">${sub.contact_id}</div>
+              </div>
+            `).join('');
+
+            document.querySelectorAll('#eitaa-subscribers .subscriber-item').forEach(item => {
+              item.addEventListener('click', () => {
+                document.querySelectorAll('#eitaa-subscribers .subscriber-item').forEach(i => i.classList.remove('selected'));
+                item.classList.add('selected');
+                selectedSubscriber = item.dataset.id;
+                eitaaSendToSelectedBtn.disabled = false;
+              });
+            });
+          } else {
+            eitaaSubscribersDiv.innerHTML = '<div class="subscriber-item" style="text-align: center; color: var(--muted); padding: 20px;">No contacts found</div>';
+          }
+        } catch (error) {
+          eitaaSubscribersDiv.innerHTML = '<div class="subscriber-item" style="text-align: center; color: var(--muted); padding: 20px;">Error loading contacts</div>';
+        }
+      }
+
+      // Eitaa send message
+      eitaaSendToSelectedBtn.onclick = async () => {
+        const messageText = eitaaMessageTextInput.value.trim();
+        if (!selectedSubscriber || !messageText) {
+          eitaaSendStatus.textContent = 'Select contact and enter message.';
+          return;
+        }
+        eitaaSendToSelectedBtn.disabled = true;
+        eitaaSendStatus.textContent = 'Sending...';
+        try {
+          const res = await fetch('/eitaa/send', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ contact_id: selectedSubscriber, message: messageText })
+          });
+          const json = await res.json();
+          if (json.ok) {
+            eitaaSendStatus.textContent = 'Sent.';
+            eitaaMessageTextInput.value = '';
+            addLog({ direction: 'outgoing', to: selectedSubscriber, body: messageText, at: new Date().toISOString(), platform: 'eitaa' });
+          } else {
+            eitaaSendStatus.textContent = 'Send error: ' + (json.error?.error || json.error || 'Unknown');
+          }
+        } catch (err) {
+          eitaaSendStatus.textContent = 'Network error: ' + err.message;
+        } finally {
+          eitaaSendToSelectedBtn.disabled = selectedSubscriber ? false : true;
+        }
+      };
       
       // Instagram send message
       sendToSelectedBtn.onclick = async () => {
@@ -285,7 +372,7 @@
         
         const platformBadge = document.createElement('span');
         platformBadge.className = `log-platform ${platform}`;
-        platformBadge.textContent = platform === 'instagram' ? 'Instagram' : 'WhatsApp';
+        platformBadge.textContent = platform === 'instagram' ? 'Instagram' : platform === 'eitaa' ? 'Eitaa' : 'WhatsApp';
         
         const direction = document.createElement('span');
         direction.className = 'log-direction';
