@@ -23,6 +23,9 @@ const SENDPULSE_BASE_URL = "https://api.sendpulse.com";
 // Eitaa (Eitaayar) configuration
 const EITAA_TOKEN = process.env.EITAA_TOKEN; // e.g. 70473287:... provided by user
 const EITAA_API_BASE = process.env.EITAA_API_BASE || "https://eitaayar.ir/api";
+// Bale (Telegram-like) configuration
+const BALE_TOKEN = process.env.BALE_TOKEN;
+const BALE_API_BASE = process.env.BALE_API_BASE || "https://tapi.bale.ai";
 
 let sendpulseToken = null;
 let tokenExpiry = null;
@@ -162,6 +165,8 @@ app.post("/send", async (req, res) => {
 
 // In-memory contacts seen via Eitaa webhook
 const eitaaContacts = new Map(); // key: chat_id, value: { id, name, username }
+// In-memory contacts seen via Bale webhook
+const baleContacts = new Map(); // key: chat_id, value: { id, name, username }
 
 // Generic Eitaa API request (Telegram-like style)
 async function eitaaCall(method, payload) {
@@ -178,20 +183,43 @@ async function eitaaCall(method, payload) {
   return res.data;
 }
 
+// Generic Bale API request (Telegram-like style)
+async function baleCall(method, payload) {
+  if (!BALE_TOKEN) {
+    throw new Error("BALE_TOKEN not configured");
+  }
+  // Bale API: https://tapi.bale.ai/bot<token>/<method>
+  const url = `${BALE_API_BASE}/bot${encodeURIComponent(BALE_TOKEN)}/${method}`;
+  const res = await axios.post(url, payload, {
+    headers: { "Content-Type": "application/json" },
+    timeout: 10000,
+  });
+  return res.data;
+}
+
 // Eitaa webhook: configured at /eitaa/webhook in Eitaayar panel
 app.post("/eitaa/webhook", (req, res) => {
   const update = req.body || {};
 
   // Try Telegram-like update formats
-  const msg = update.message || update.edited_message || update.callback_query?.message || null;
+  const msg =
+    update.message ||
+    update.edited_message ||
+    update.callback_query?.message ||
+    null;
   const chat = msg?.chat || update.chat || null;
   const from = msg?.from || update.from || null;
   const text = msg?.text || update.text || update.message?.caption || null;
 
   const chat_id = chat?.id || update.chat_id || update.user_id || from?.id;
-  const name = (from?.first_name && from?.last_name)
-    ? `${from.first_name} ${from.last_name}`
-    : from?.first_name || from?.last_name || chat?.title || from?.name || null;
+  const name =
+    from?.first_name && from?.last_name
+      ? `${from.first_name} ${from.last_name}`
+      : from?.first_name ||
+        from?.last_name ||
+        chat?.title ||
+        from?.name ||
+        null;
   const username = from?.username || chat?.username || null;
 
   if (chat_id) {
@@ -201,6 +229,22 @@ app.post("/eitaa/webhook", (req, res) => {
       username: username || null,
     });
   }
+
+  // Single, structured log specifically for Eitaa webhook
+  console.log(
+    "[EITAA WEBHOOK]",
+    JSON.stringify(
+      {
+        receivedAt: new Date().toISOString(),
+        chat_id,
+        username,
+        name,
+        text,
+        payload: update,
+      }
+      // No pretty-print to keep it on one line
+    )
+  );
 
   const event = {
     direction: "incoming",
@@ -232,10 +276,15 @@ app.post("/eitaa/send", async (req, res) => {
   try {
     const { contact_id, message } = req.body;
     if (!contact_id || !message) {
-      return res.status(400).json({ ok: false, error: "contact_id and message are required" });
+      return res
+        .status(400)
+        .json({ ok: false, error: "contact_id and message are required" });
     }
 
-    const result = await eitaaCall("sendMessage", { chat_id: contact_id, text: message });
+    const result = await eitaaCall("sendMessage", {
+      chat_id: contact_id,
+      text: message,
+    });
 
     // Broadcast optimistic outgoing message
     pushAndBroadcast({
@@ -250,7 +299,171 @@ app.post("/eitaa/send", async (req, res) => {
 
     res.json({ ok: true, result });
   } catch (error) {
-    res.status(500).json({ ok: false, error: error.response?.data || error.message });
+    res
+      .status(500)
+      .json({ ok: false, error: error.response?.data || error.message });
+  }
+});
+
+// Quick token test endpoint for Eitaa (verifies token and API base)
+app.get("/eitaa/test", async (req, res) => {
+  try {
+    const result = await eitaaCall("getMe", {});
+    res.json({ ok: true, result });
+  } catch (error) {
+    res
+      .status(500)
+      .json({ ok: false, error: error.response?.data || error.message });
+  }
+});
+
+// Bale webhook: configure setWebhook to point to /bale/webhook
+app.post("/bale/webhook", (req, res) => {
+  console.log(res);
+  const update = req.body || {};
+
+  // Telegram-like update structure
+  const msg =
+    update.message ||
+    update.edited_message ||
+    update.callback_query?.message ||
+    null;
+  const chat = msg?.chat || update.chat || null;
+  const from = msg?.from || update.from || null;
+  const text = msg?.text || update.text || update.message?.caption || null;
+
+  const chat_id = chat?.id || update.chat_id || update.user_id || from?.id;
+  const name =
+    from?.first_name && from?.last_name
+      ? `${from.first_name} ${from.last_name}`
+      : from?.first_name ||
+        from?.last_name ||
+        chat?.title ||
+        from?.name ||
+        null;
+  const username = from?.username || chat?.username || null;
+
+  if (chat_id) {
+    baleContacts.set(String(chat_id), {
+      id: String(chat_id),
+      name: name || username || String(chat_id),
+      username: username || null,
+    });
+  }
+
+  // Single structured log for Bale webhook
+  console.log(
+    "[BALE WEBHOOK]",
+    JSON.stringify({
+      receivedAt: new Date().toISOString(),
+      chat_id,
+      username,
+      name,
+      text,
+      payload: update,
+    })
+  );
+
+  const event = {
+    direction: "incoming",
+    platform: "bale",
+    from: name || username || String(chat_id) || "Unknown",
+    username: username || null,
+    body: text || "[No text]",
+    type: "text",
+    raw: update,
+    at: new Date().toISOString(),
+  };
+  pushAndBroadcast(event);
+
+  res.status(200).json({ ok: true });
+});
+
+// List Bale subscribers
+app.get("/bale/subscribers", (req, res) => {
+  const list = Array.from(baleContacts.values()).map((c) => ({
+    contact_id: c.id,
+    name: c.name,
+    username: c.username,
+  }));
+  res.json({ ok: true, subscribers: list });
+});
+
+// Send a message to a Bale contact
+app.post("/bale/send", async (req, res) => {
+  try {
+    const { contact_id, message } = req.body;
+
+    if (!contact_id || !message) {
+      return res.status(400).json({
+        ok: false,
+        error: "Parameters 'contact_id' and 'message' are required.",
+      });
+    }
+
+    const result = await baleCall("sendMessage", {
+      chat_id: String(contact_id),
+      text: message,
+    });
+
+    pushAndBroadcast({
+      direction: "outgoing",
+      to: contact_id,
+      body: message,
+      platform: "bale",
+      providerResponse: result,
+      at: new Date().toISOString(),
+    });
+
+    res.json({ ok: true, result });
+  } catch (error) {
+    const status = error.response?.status || 500;
+    const data = error.response?.data || { error: error.message };
+    res.status(status).json({ ok: false, error: data });
+  }
+});
+
+// Test Bale token/API
+app.get("/bale/test", async (req, res) => {
+  try {
+    const result = await baleCall("getMe", {});
+    res.json({ ok: true, result });
+  } catch (error) {
+    res
+      .status(500)
+      .json({ ok: false, error: error.response?.data || error.message });
+  }
+});
+
+// Set Bale webhook to point updates to our server (Bale: setWebhookUrl)
+app.post("/bale/webhook/set", async (req, res) => {
+  try {
+    const url = process.env.BALE_WEBHOOK_URL || req.body?.url;
+    if (!url) {
+      return res.status(400).json({
+        ok: false,
+        error: "Missing 'url' (body) or BALE_WEBHOOK_URL env",
+      });
+    }
+    const result = await baleCall("setWebhook", { url });
+    console.log("[BALE SETWEBHOOK]", JSON.stringify({ url, result }));
+    res.json({ ok: true, result });
+  } catch (error) {
+    res
+      .status(500)
+      .json({ ok: false, error: error.response?.data || error.message });
+  }
+});
+
+// Get Bale webhook info
+app.get("/bale/webhook/info", async (req, res) => {
+  try {
+    const result = await baleCall("getWebhookInfo", {});
+    res.json({ ok: true, result });
+  } catch (error) {
+    res
+      .status(500)
+      .json({ ok: false, error: error.response?.data || error.message });
   }
 });
 
@@ -678,5 +891,24 @@ app.listen(PORT, async () => {
     console.log("SendPulse: Initialized successfully");
   } catch (error) {
     console.error("SendPulse: Failed to initialize:", error.message);
+  }
+
+  // Auto-register Bale webhook using env URL on startup
+  try {
+    const webhookUrl = process.env.BALE_WEBHOOK_URL;
+    if (webhookUrl) {
+      const result = await baleCall("setWebhook", { url: webhookUrl });
+      console.log(
+        "[BALE SETWEBHOOK INIT]",
+        JSON.stringify({ url: webhookUrl, result })
+      );
+    } else {
+      console.log("[BALE SETWEBHOOK INIT] Skipped: BALE_WEBHOOK_URL not set");
+    }
+  } catch (error) {
+    console.error(
+      "[BALE SETWEBHOOK INIT] Failed:",
+      error.response?.data || error.message
+    );
   }
 });
