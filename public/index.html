@@ -41,7 +41,6 @@
       .log-platform { padding: 2px 6px; border-radius: 4px; font-size: 10px; font-weight: 600; text-transform: uppercase; }
       .log-platform.whatsapp { background: rgba(37, 211, 102, 0.2); color: var(--whatsapp); }
       .log-platform.instagram { background: rgba(228, 64, 95, 0.2); color: var(--instagram); }
-      .log-platform.eitaa { background: rgba(255, 153, 0, 0.18); color: #ff9900; }
       .log-platform.bale { background: rgba(46, 127, 218, 0.2); color: #2e7fda; }
       .log-direction { font-weight: 600; font-size: 12px; }
       .log-user { font-size: 13px; color: var(--text); }
@@ -379,7 +378,7 @@
         
         const platformBadge = document.createElement('span');
         platformBadge.className = `log-platform ${platform}`;
-        platformBadge.textContent = platform === 'instagram' ? 'Instagram' : platform === 'bale' ? 'Bale' : platform === 'eitaa' ? 'Eitaa' : 'WhatsApp';
+        platformBadge.textContent = platform === 'instagram' ? 'Instagram' : platform === 'bale' ? 'Bale' : 'WhatsApp';
         
         const direction = document.createElement('span');
         direction.className = 'log-direction';

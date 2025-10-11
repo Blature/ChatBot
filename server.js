@@ -20,9 +20,6 @@ const SENDPULSE_CLIENT_ID = process.env.SENDPULSE_CLIENT_ID;
 const SENDPULSE_CLIENT_SECRET = process.env.SENDPULSE_CLIENT_SECRET;
 const SENDPULSE_BASE_URL = "https://api.sendpulse.com";
 
-// Eitaa (Eitaayar) configuration
-const EITAA_TOKEN = process.env.EITAA_TOKEN; // e.g. 70473287:... provided by user
-const EITAA_API_BASE = process.env.EITAA_API_BASE || "https://eitaayar.ir/api";
 // Bale (Telegram-like) configuration
 const BALE_TOKEN = process.env.BALE_TOKEN;
 const BALE_API_BASE = process.env.BALE_API_BASE || "https://tapi.bale.ai";
@@ -159,29 +156,8 @@ app.post("/send", async (req, res) => {
   }
 });
 
-// -----------------------------
-// Eitaa helpers and endpoints
-// -----------------------------
-
-// In-memory contacts seen via Eitaa webhook
-const eitaaContacts = new Map(); // key: chat_id, value: { id, name, username }
 // In-memory contacts seen via Bale webhook
 const baleContacts = new Map(); // key: chat_id, value: { id, name, username }
-
-// Generic Eitaa API request (Telegram-like style)
-async function eitaaCall(method, payload) {
-  if (!EITAA_TOKEN) {
-    throw new Error("EITAA_TOKEN not configured");
-  }
-  // Many Eitaayar deployments mirror Telegram Bot API style:
-  // POST https://eitaayar.ir/api/<token>/<method>
-  const url = `${EITAA_API_BASE}/${encodeURIComponent(EITAA_TOKEN)}/${method}`;
-  const res = await axios.post(url, payload, {
-    headers: { "Content-Type": "application/json" },
-    timeout: 10000,
-  });
-  return res.data;
-}
 
 // Generic Bale API request (Telegram-like style)
 async function baleCall(method, payload) {
@@ -197,125 +173,6 @@ async function baleCall(method, payload) {
   return res.data;
 }
 
-// Eitaa webhook: configured at /eitaa/webhook in Eitaayar panel
-app.post("/eitaa/webhook", (req, res) => {
-  const update = req.body || {};
-
-  // Try Telegram-like update formats
-  const msg =
-    update.message ||
-    update.edited_message ||
-    update.callback_query?.message ||
-    null;
-  const chat = msg?.chat || update.chat || null;
-  const from = msg?.from || update.from || null;
-  const text = msg?.text || update.text || update.message?.caption || null;
-
-  const chat_id = chat?.id || update.chat_id || update.user_id || from?.id;
-  const name =
-    from?.first_name && from?.last_name
-      ? `${from.first_name} ${from.last_name}`
-      : from?.first_name ||
-        from?.last_name ||
-        chat?.title ||
-        from?.name ||
-        null;
-  const username = from?.username || chat?.username || null;
-
-  if (chat_id) {
-    eitaaContacts.set(String(chat_id), {
-      id: String(chat_id),
-      name: name || username || String(chat_id),
-      username: username || null,
-    });
-  }
-
-  // Single, structured log specifically for Eitaa webhook
-  console.log(
-    "[EITAA WEBHOOK]",
-    JSON.stringify(
-      {
-        receivedAt: new Date().toISOString(),
-        chat_id,
-        username,
-        name,
-        text,
-        payload: update,
-      }
-      // No pretty-print to keep it on one line
-    )
-  );
-
-  const event = {
-    direction: "incoming",
-    platform: "eitaa",
-    from: name || username || String(chat_id) || "Unknown",
-    username: username || null,
-    body: text || "[No text]",
-    type: "text",
-    raw: update,
-    at: new Date().toISOString(),
-  };
-  pushAndBroadcast(event);
-
-  res.status(200).json({ ok: true });
-});
-
-// List Eitaa subscribers (contacts seen so far)
-app.get("/eitaa/subscribers", (req, res) => {
-  const list = Array.from(eitaaContacts.values()).map((c) => ({
-    contact_id: c.id,
-    name: c.name,
-    username: c.username,
-  }));
-  res.json({ ok: true, subscribers: list });
-});
-
-// Send a message to an Eitaa contact
-app.post("/eitaa/send", async (req, res) => {
-  try {
-    const { contact_id, message } = req.body;
-    if (!contact_id || !message) {
-      return res
-        .status(400)
-        .json({ ok: false, error: "contact_id and message are required" });
-    }
-
-    const result = await eitaaCall("sendMessage", {
-      chat_id: contact_id,
-      text: message,
-    });
-
-    // Broadcast optimistic outgoing message
-    pushAndBroadcast({
-      direction: "outgoing",
-      platform: "eitaa",
-      from: "U",
-      to: String(contact_id),
-      body: message,
-      type: "text",
-      at: new Date().toISOString(),
-    });
-
-    res.json({ ok: true, result });
-  } catch (error) {
-    res
-      .status(500)
-      .json({ ok: false, error: error.response?.data || error.message });
-  }
-});
-
-// Quick token test endpoint for Eitaa (verifies token and API base)
-app.get("/eitaa/test", async (req, res) => {
-  try {
-    const result = await eitaaCall("getMe", {});
-    res.json({ ok: true, result });
-  } catch (error) {
-    res
-      .status(500)
-      .json({ ok: false, error: error.response?.data || error.message });
-  }
-});
 
 // Bale webhook: configure setWebhook to point to /bale/webhook
 app.post("/bale/webhook", (req, res) => {
@@ -467,7 +324,7 @@ app.get("/bale/webhook/info", async (req, res) => {
   }
 });
 
-app.post("/webhook", (req, res) => {
+app.post("/whatsapp/webhook", (req, res) => {
   // Check if this is actually an Instagram message
   const payload = req.body || {};
   const isInstagram =
